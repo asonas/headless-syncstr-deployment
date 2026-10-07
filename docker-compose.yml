@@ -1,0 +1,15 @@
+services:
+  syncstr:
+    build:
+      context: https://github.com/asonas/syncstr.git#1f4c815ca200f0943bbd76c884fa0f518666ec40:headless
+    user: "${SYNCSTR_UID:-1000}:${SYNCSTR_GID:-1000}"
+    restart: unless-stopped
+    stop_grace_period: 35s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "${SYNCSTR_BIND_ADDRESS:?Set the NAS LAN address}:${SYNCSTR_PORT:-8443}:8443"
+    volumes:
+      - "${SYNCSTR_DATA_PATH:?Set a persistent data directory}:/data:rw"
+      - "${SYNCSTR_IDENTITY_PATH:?Set a persistent identity directory}:/identity:ro"
