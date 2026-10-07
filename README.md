@@ -4,9 +4,18 @@ Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr
 
 ## Coolify
 
-Create a Git-based Docker Compose application with branch `main`, Base Directory `/`, and Compose Location `/docker-compose.yml`. Use the NAS server. Configure the variables from `.env.example` with the NAS's actual LAN address and dedicated persistent directories. The example address is fictional. Do not assign a proxy domain: this service handles TLS on port 8443 itself.
+Create a Git-based Docker Compose application with branch `main`, Base Directory `/`, and Compose Location `/docker-compose.yml`. Use the NAS server. Configure the variables from `.env.example` with the NAS's actual LAN address. The example address is fictional. Do not assign a proxy domain: this service handles TLS on port 8443 itself.
 
-Create the data and identity directories on the NAS before deployment, owned by the configured numeric UID/GID with mode 0700. Keep them outside Coolify's repository checkout. Do not reuse an app's SQLite database or an existing music directory. The service stores uploaded originals in its own object store; it does not scan existing music.
+Create dedicated data and identity directories on the NAS before deployment, owned by the configured numeric UID/GID with mode 0700. Keep them outside Coolify's repository checkout. Create the two external Docker volumes with a local bind to these directories. Substitute your actual directories for the fictional paths below. Fixed external volume names avoid relying on host-path variable interpolation in older Coolify parsers.
+
+```sh
+docker volume create --driver local --opt type=none --opt o=bind \
+  --opt device=/srv/syncstr/data syncstr-headless-data
+docker volume create --driver local --opt type=none --opt o=bind \
+  --opt device=/srv/syncstr/identity syncstr-headless-identity
+```
+
+Do not reuse an app's SQLite database or an existing music directory. The service stores uploaded originals in its own object store; it does not scan existing music.
 
 Before the first deployment, build the image and initialize its identity once:
 
@@ -15,12 +24,12 @@ cp .env.example .env
 # Edit .env for this host before continuing.
 docker compose build
 docker compose run --rm --no-deps \
-  --volume /srv/syncstr/identity:/identity:rw \
+  --volume syncstr-headless-identity:/identity:rw \
   syncstr init --identity /identity --host 192.0.2.10
 docker compose up -d
 ```
 
-Replace both command values with the configured identity directory and address used by clients. If Coolify builds first, the first launch will fail until initialization is completed; run `init` using that built image and restart this application. Initialization never overwrites an existing identity. The node certificate expires after one year.
+Replace the example address with the address used by clients. If Coolify builds first, the first launch will fail until initialization is completed; run `init` using that built image and restart this application. Initialization never overwrites an existing identity. The node certificate expires after one year.
 
 The container runs without root or extra capabilities, with a read-only root filesystem, writable `/data`, and read-only `/identity`. Verify these settings in the actual container after deployment. The LAN binding does not configure router forwarding, a relay, or external connectivity.
 

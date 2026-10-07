@@ -11,5 +11,12 @@ services:
     ports:
       - "${SYNCSTR_BIND_ADDRESS:?Set the NAS LAN address}:${SYNCSTR_PORT:-8443}:8443"
     volumes:
-      - "${SYNCSTR_DATA_PATH:?Set a persistent data directory}:/data:rw"
-      - "${SYNCSTR_IDENTITY_PATH:?Set a persistent identity directory}:/identity:ro"
+      - "syncstr-headless-data:/data:rw"
+      - "syncstr-headless-identity:/identity:ro"
+volumes:
+  syncstr-headless-data:
+    external: true
+    name: syncstr-headless-data
+  syncstr-headless-identity:
+    external: true
+    name: syncstr-headless-identity
