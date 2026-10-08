@@ -1,6 +1,6 @@
 # Headless Syncstr deployment
 
-Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/a4e01347f887beef3a6e3df2cf4f6a6989bbc093/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
+Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/cc29d52af173a7bacec289f8b235af962cd6611a/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
 
 ## Coolify
 
@@ -33,7 +33,8 @@ Startup initializes `/data/peer` once and retains its private key and allowed-de
 Read the current public node address record:
 
 ```sh
-docker compose exec syncstr cat /data/peer/address.json
+docker compose exec syncstr syncstr-headless peer-info \
+  --state /data/peer --address /data/peer/address.json --ip 192.0.2.10
 ```
 
 In the native app's P2P music sharing settings, copy the app's public device ID. Allow that device on the NAS:
@@ -43,7 +44,7 @@ docker compose exec syncstr syncstr-headless peer-pair \
   --state /data/peer --peer <device-public-id>
 ```
 
-Enter the node ID and reachable UDP address from `address.json` in the app. The UDP port can change when the node restarts, so read the address record again after a restart. Do not share `device.key`. To revoke access, repeat the pairing command with `--revoke`. For Coolify-managed containers, use its terminal or `docker exec` against the running container instead of starting a second node.
+Replace the fictional IP with the NAS's reachable LAN IP. Paste the exported JSON into the app, then confirm the displayed node ID before registration. Add `--qr` to display a QR code for the iPhone scanner. The UDP port can change when the node restarts, so export again after a restart. Do not share `device.key`. To revoke access, repeat the pairing command with `--revoke`. For Coolify-managed containers, use its terminal or `docker exec` against the running container instead of starting a second node.
 
 ## Client verification
 
