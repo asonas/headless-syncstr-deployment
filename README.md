@@ -1,6 +1,6 @@
 # Headless Syncstr deployment
 
-Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/1f4c815ca200f0943bbd76c884fa0f518666ec40/headless). The Compose build uses the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
+Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/a4e01347f887beef3a6e3df2cf4f6a6989bbc093/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
 
 ## Coolify
 
@@ -24,7 +24,26 @@ docker compose up -d
 
 Set `SYNCSTR_IDENTITY_DIRECTORY` to the absolute identity bind source in the Compose file before running initialization. Replace the example address with the address used by clients. If Coolify builds first, the first launch will fail until initialization is completed; run `init` using that built image and restart this application. Initialization never overwrites an existing identity. The node certificate expires after one year.
 
-The container runs without root or extra capabilities, with a read-only root filesystem, writable `/data`, and read-only `/identity`. Verify these settings in the actual container after deployment. The LAN binding does not configure router forwarding, a relay, or external connectivity.
+The container runs without root or extra capabilities, with a read-only root filesystem, writable `/data`, and read-only `/identity`. Verify these settings in the actual container after deployment. Linux host networking exposes the node's UDP addresses directly and binds HTTPS only to the configured NAS address and port. There are no Compose port mappings. Host networking shares the host's network namespace; use the NAS firewall to restrict access. It does not configure router forwarding or external connectivity.
+
+## P2P enrollment
+
+Startup initializes `/data/peer` once and retains its private key and allowed-device records across deployments. An existing but incomplete directory causes startup to fail rather than replacing an identity. Keep the entire data directory in backups. Direct mode disables relay services; remote access requires a reachable UDP route.
+
+Read the current public node address record:
+
+```sh
+docker compose exec syncstr cat /data/peer/address.json
+```
+
+In the native app's P2P music sharing settings, copy the app's public device ID. Allow that device on the NAS:
+
+```sh
+docker compose exec syncstr syncstr-headless peer-pair \
+  --state /data/peer --peer <device-public-id>
+```
+
+Enter the node ID and reachable UDP address from `address.json` in the app. The UDP port can change when the node restarts, so read the address record again after a restart. Do not share `device.key`. To revoke access, repeat the pairing command with `--revoke`. For Coolify-managed containers, use its terminal or `docker exec` against the running container instead of starting a second node.
 
 ## Client verification
 
@@ -37,6 +56,6 @@ syncstr-headless catalog --url https://192.0.2.10:8443 \
   --cert ./tls.crt --token-file ./token
 ```
 
-Verify an upload, retry, restart, and byte-identical download before using the node for originals. Native macOS/iPhone NAS registration, automatic collection, Bonjour discovery, and P2P enrollment are not implemented in this milestone.
+Verify an upload, retry, restart, and byte-identical download before using the node for originals. Native macOS/iPhone apps support explicit P2P registration and transfers. Automatic collection and remote-network connectivity still require separate work and verification.
 
 Stop the application before backing up both persistent directories. Redeployments must retain the same mounts. Do not run two node processes against the same data directory.

@@ -1,15 +1,26 @@
 services:
   syncstr:
     build:
-      context: https://github.com/asonas/syncstr.git#1f4c815ca200f0943bbd76c884fa0f518666ec40:headless
+      context: https://github.com/asonas/syncstr.git#a4e01347f887beef3a6e3df2cf4f6a6989bbc093:headless
+      args:
+        SYNCSTR_FEATURES: p2p
     user: "${SYNCSTR_UID:-1000}:${SYNCSTR_GID:-1000}"
     restart: unless-stopped
     stop_grace_period: 35s
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    ports:
-      - "${SYNCSTR_BIND_ADDRESS:?Set the NAS LAN address}:${SYNCSTR_PORT:-8443}:8443"
+    network_mode: host
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        if [ ! -d /data/peer ]; then
+          syncstr-headless peer-init --state /data/peer
+        fi
+        exec syncstr-headless serve --data /data --identity /identity \
+          --listen "${SYNCSTR_BIND_ADDRESS:?Set the NAS LAN address}:${SYNCSTR_PORT:-8443}" \
+          --peer-state /data/peer --peer-address-out /data/peer/address.json \
+          --peer-mode direct
     volumes:
       - "/mnt/data/syncstr-headless/data:/data:rw"
       - "/mnt/data/syncstr-headless/identity:/identity:ro"
