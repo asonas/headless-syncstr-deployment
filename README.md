@@ -1,6 +1,6 @@
 # Headless Syncstr deployment
 
-Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/cc29d52af173a7bacec289f8b235af962cd6611a/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
+Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/565e1ad2064ab57438e595a6978ca236a0819eae/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
 
 ## Coolify
 
