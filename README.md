@@ -1,6 +1,6 @@
 # Headless Syncstr deployment
 
-Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/565e1ad2064ab57438e595a6978ca236a0819eae/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
+Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/bfe98090168b1ee658edc3f1d9542420c3e5ef47/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
 
 ## Coolify
 
@@ -29,6 +29,8 @@ The container runs without root or extra capabilities, with a read-only root fil
 ## P2P enrollment
 
 Startup initializes `/data/peer` once and retains its private key and allowed-device records across deployments. An existing but incomplete directory causes startup to fail rather than replacing an identity. Keep the entire data directory in backups. Direct mode disables relay services; remote access requires a reachable UDP route.
+
+P2P listens on the configured LAN address and `SYNCSTR_PEER_PORT` (UDP, default 58024). Keep the LAN address stable and reserve this UDP port for Syncstr. Saved connection records remain valid across restarts; startup fails if the port is already occupied. For an existing deployment, set this variable to the current advertised LAN port before upgrading so clients can retain their saved JSON.
 
 Read the current public node address record:
 
