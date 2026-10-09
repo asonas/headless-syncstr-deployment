@@ -1,6 +1,6 @@
 # Headless Syncstr deployment
 
-Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/eda1cb56567119265686fd3ff392fe04ab41b52a/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
+Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/733b45e3668e5b5b1873ab80b182d5a9691f2e95/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
 
 ## Coolify
 
@@ -30,7 +30,9 @@ The container runs without root or extra capabilities, with a read-only root fil
 
 Startup initializes `/data/peer` once and retains its private key and allowed-device records across deployments. An existing but incomplete directory causes startup to fail rather than replacing an identity. Keep the entire data directory in backups. Direct mode disables relay services; remote access requires a reachable UDP route.
 
-P2P listens on the configured LAN address and `SYNCSTR_PEER_PORT` (UDP, default 58024). Keep the LAN address stable and reserve this UDP port for Syncstr. Saved connection records remain valid across restarts; startup fails if the port is already occupied. For an existing deployment, set this variable to the current advertised LAN port before upgrading so clients can retain their saved JSON.
+P2P listens on the configured LAN IPv4 address and all IPv6 interfaces using `SYNCSTR_PEER_PORT` (UDP, default 58024). Keep the LAN address stable and reserve this UDP port for Syncstr. Both sockets must bind successfully. Saved connection records remain valid across restarts; startup fails if the port is already occupied. For an existing deployment, set this variable to the current advertised LAN port before upgrading so clients can retain their saved JSON.
+
+For cellular direct access, the NAS needs a global IPv6 address and the host/router must permit inbound UDP on this port to that address. Restrict the router exception to the NAS's address and this UDP port. HTTPS stays bound to the LAN IPv4 address. Directory registrations resolve current IPv4 and IPv6 candidates without manual re-enrollment. IPv4-only cellular clients need a separate public IPv4 forwarding route; these sockets do not create it. Verify a catalog fetch and audio download on a physical phone with Wi-Fi disabled before claiming external connectivity.
 
 Set `SYNCSTR_PEER_DIRECTORY` to the deployed directory's HTTPS origin to publish signed connection candidates. Leave it empty to retain IP-only operation. The directory carries connection information only; catalogs and audio still use direct QUIC. See the upstream [rendezvous guide](https://github.com/asonas/syncstr/blob/9403b1c7144d13ca3509e6bc71b85895fbccc73f/docs/peer-rendezvous.md).
 
