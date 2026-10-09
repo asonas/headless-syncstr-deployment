@@ -1,6 +1,6 @@
 # Headless Syncstr deployment
 
-Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/bfe98090168b1ee658edc3f1d9542420c3e5ef47/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
+Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/9403b1c7144d13ca3509e6bc71b85895fbccc73f/headless). The Compose build enables P2P using the upstream Dockerfile at a fixed commit. Change the commit in `docker-compose.yml` to upgrade; application source and dependency notices remain maintained upstream.
 
 ## Coolify
 
@@ -32,6 +32,10 @@ Startup initializes `/data/peer` once and retains its private key and allowed-de
 
 P2P listens on the configured LAN address and `SYNCSTR_PEER_PORT` (UDP, default 58024). Keep the LAN address stable and reserve this UDP port for Syncstr. Saved connection records remain valid across restarts; startup fails if the port is already occupied. For an existing deployment, set this variable to the current advertised LAN port before upgrading so clients can retain their saved JSON.
 
+Set `SYNCSTR_PEER_DIRECTORY` to the deployed directory's HTTPS origin to publish signed connection candidates. Leave it empty to retain IP-only operation. The directory carries connection information only; catalogs and audio still use direct QUIC. See the upstream [rendezvous guide](https://github.com/asonas/syncstr/blob/9403b1c7144d13ca3509e6bc71b85895fbccc73f/docs/peer-rendezvous.md).
+
+For directory-based enrollment, replace `--ip` below with `--directory https://directory.example.com`, and add `--qr` for iPhone. Existing device permissions are retained. Regenerate the enrollment JSON once to enable directory discovery in each client.
+
 Read the current public node address record:
 
 ```sh
@@ -46,7 +50,7 @@ docker compose exec syncstr syncstr-headless peer-pair \
   --state /data/peer --peer <device-public-id>
 ```
 
-Replace the fictional IP with the NAS's reachable LAN IP. Paste the exported JSON into the app, then confirm the displayed node ID before registration. Add `--qr` to display a QR code for the iPhone scanner. The UDP port can change when the node restarts, so export again after a restart. Do not share `device.key`. To revoke access, repeat the pairing command with `--revoke`. For Coolify-managed containers, use its terminal or `docker exec` against the running container instead of starting a second node.
+Replace the fictional IP with the NAS's reachable LAN IP. Paste the exported JSON into the app, then confirm the displayed node ID before registration. Add `--qr` to display a QR code for the iPhone scanner. Do not share `device.key`. To revoke access, repeat the pairing command with `--revoke`. For Coolify-managed containers, use its terminal or `docker exec` against the running container instead of starting a second node.
 
 ## Client verification
 
