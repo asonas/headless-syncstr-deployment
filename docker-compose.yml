@@ -1,7 +1,7 @@
 services:
   syncstr:
     build:
-      context: https://github.com/asonas/syncstr.git#9403b1c7144d13ca3509e6bc71b85895fbccc73f:headless
+      context: https://github.com/asonas/syncstr.git#eda1cb56567119265686fd3ff392fe04ab41b52a:headless
       args:
         SYNCSTR_FEATURES: p2p
     user: "${SYNCSTR_UID:-1000}:${SYNCSTR_GID:-1000}"
