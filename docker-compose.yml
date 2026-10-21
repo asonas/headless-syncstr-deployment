@@ -2,8 +2,22 @@ services:
   syncstr:
     build:
       context: https://github.com/asonas/syncstr.git#f6dce388925b60e6b62322787c15981c6c739611:headless
-      args:
-        SYNCSTR_FEATURES: p2p
+      dockerfile_inline: |
+        FROM rust:1.99.0-bookworm AS build
+        RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+        WORKDIR /src
+        COPY Cargo.toml Cargo.lock ./
+        COPY src ./src
+        COPY scripts ./scripts
+        RUN cargo update -p webpki-roots --precise 1.0.10 && cargo build --release --locked --features p2p && cp target/release/syncstr-headless /syncstr-headless && python3 scripts/collect_licenses.py /licenses p2p
+        FROM debian:bookworm-slim
+        RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -f /usr/share/ca-certificates/mozilla/emSign_ECC_Root_CA_-_G3.crt /usr/share/ca-certificates/mozilla/Comodo_AAA_Services_root.crt && update-ca-certificates --fresh && rm -rf /var/lib/apt/lists/*
+        COPY --from=build /syncstr-headless /usr/local/bin/syncstr-headless
+        COPY --from=build /licenses /usr/share/syncstr/licenses
+        USER 1000:1000
+        EXPOSE 8443
+        ENTRYPOINT ["/usr/local/bin/syncstr-headless"]
+        CMD ["serve", "--data", "/data", "--identity", "/identity", "--listen", "0.0.0.0:8443"]
     user: "${SYNCSTR_UID:-1000}:${SYNCSTR_GID:-1000}"
     restart: unless-stopped
     stop_grace_period: 35s
