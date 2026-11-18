@@ -68,3 +68,11 @@ syncstr-headless catalog --url https://192.0.2.10:8443 \
 Verify an upload, retry, restart, and byte-identical download before using the node for originals. Native macOS/iPhone apps support explicit P2P registration and transfers. Automatic collection and remote-network connectivity still require separate work and verification.
 
 Stop the application before backing up both persistent directories. Redeployments must retain the same mounts. Do not run two node processes against the same data directory.
+
+## Tailscale access
+
+The tailscale sidecar joins the tailnet in userspace and persists its identity in the NAS state directory. Initialize this directory with the state of the enrolled Syncstr node before deploying. Only one running daemon may use that identity. Use tailnet policy to allow the intended devices to reach its TCP port 443.
+
+Serve forwards HTTPS reads to a loopback proxy inside the sidecar. The proxy accepts catalog and track-audio reads, forwards the caller's legacy v4 bearer token, and verifies the existing LAN listener's certificate against the mounted public certificate. The sidecar has no music, token or host private-key mount. The existing peer and LAN listeners keep their addresses.
+
+To verify access from an allowed device, request `/v4/catalog` at the node's tailnet HTTPS name. The current backend returns 401 until the caller supplies its token. An unrecognized path returns 404 from the sidecar.

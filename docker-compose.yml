@@ -45,3 +45,19 @@ services:
     volumes:
       - "/mnt/data/syncstr-headless/data:/data:rw"
       - "/mnt/data/syncstr-headless/identity:/identity:ro"
+  tailscale:
+    build: ./tailscale
+    hostname: syncstr
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    environment:
+      TS_USERSPACE: "true"
+      TS_AUTH_ONCE: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /etc/syncstr/serve.json
+      TS_HOSTNAME: syncstr
+      SYNCSTR_BIND_ADDRESS: "${SYNCSTR_BIND_ADDRESS:?Set the NAS LAN address}"
+      SYNCSTR_PORT: "${SYNCSTR_PORT:-8443}"
+    volumes:
+      - "/mnt/data/syncstr-tailscale:/var/lib/tailscale"
+      - "/mnt/data/syncstr-headless/identity/tls.crt:/etc/syncstr/host.crt:ro"
