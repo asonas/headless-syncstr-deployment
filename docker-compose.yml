@@ -1,7 +1,7 @@
 services:
   syncstr:
     build:
-      context: https://github.com/asonas/syncstr.git#b79bebb278fe9ee4c4900aca256b13c13d4b2f50:headless
+      context: https://github.com/asonas/syncstr.git#b652fa4fa7ee220f0f65e659394f69226a42f3ec:headless
       dockerfile_inline: |
         FROM rust:1.99.0-bookworm AS build
         RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
@@ -25,23 +25,23 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    network_mode: host
-    entrypoint: ["/bin/sh", "-ec"]
+    # The sidecar's namespace. Userspace tailscaled forwards tailnet
+    # connections on ports Serve does not handle to 127.0.0.1:<port>, so
+    # both listeners use 127.0.0.2, which only Serve's proxy reaches.
+    network_mode: service:tailscale
+    depends_on: [tailscale]
     command:
-      - |
-        if [ ! -d /data/peer ]; then
-          syncstr-headless peer-init --state /data/peer
-        fi
-        set --
-        if [ -n "${SYNCSTR_PEER_DIRECTORY:-}" ]; then
-          set -- --peer-directory "${SYNCSTR_PEER_DIRECTORY}"
-        fi
-        exec syncstr-headless serve --data /data --identity /identity \
-          --listen "${SYNCSTR_BIND_ADDRESS:?Set the NAS LAN address}:${SYNCSTR_PORT:-8443}" \
-          --peer-state /data/peer --peer-address-out /data/peer/address.json \
-          --peer-mode direct \
-          --peer-listen "${SYNCSTR_BIND_ADDRESS:?Set the NAS LAN address}:${SYNCSTR_PEER_PORT:-58024}" \
-          --peer-listen "[::]:${SYNCSTR_PEER_PORT:-58024}" "$$@"
+      - serve
+      - --data
+      - /data
+      - --identity
+      - /identity
+      - --listen
+      - 127.0.0.2:8443
+      - --api-listen
+      - 127.0.0.2:8441
+      - --api-address
+      - "${SYNCSTR_API_ADDRESS:?Set the host's tailnet HTTPS origin}"
     volumes:
       - "/mnt/data/syncstr-headless/data:/data:rw"
       - "/mnt/data/syncstr-headless/identity:/identity:ro"
@@ -56,8 +56,5 @@ services:
       TS_STATE_DIR: /var/lib/tailscale
       TS_SERVE_CONFIG: /etc/syncstr/serve.json
       TS_HOSTNAME: syncstr
-      SYNCSTR_BIND_ADDRESS: "${SYNCSTR_BIND_ADDRESS:?Set the NAS LAN address}"
-      SYNCSTR_PORT: "${SYNCSTR_PORT:-8443}"
     volumes:
       - "/mnt/data/syncstr-tailscale:/var/lib/tailscale"
-      - "/mnt/data/syncstr-headless/identity/tls.crt:/etc/syncstr/host.crt:ro"

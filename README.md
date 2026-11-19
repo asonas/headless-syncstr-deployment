@@ -1,78 +1,54 @@
 # Headless Syncstr deployment
 
-Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/b79bebb278fe9ee4c4900aca256b13c13d4b2f50/headless). The Compose build uses application source at a fixed commit. Its inline Dockerfile temporarily overrides the upstream recipe to pin `webpki-roots` to 1.0.10 and remove the affected emSign G3 and AAA cross-sign trust paths from the OS store (Mozilla incident 2083449). P2P and upstream dependency notices are retained. This requires Compose with `dockerfile_inline` support. Restore the upstream Dockerfile after the pinned source includes both fixes; do not remove this override based only on an application version bump.
+Deploy the standalone Rust node from [Syncstr](https://github.com/asonas/syncstr/tree/b652fa4fa7ee220f0f65e659394f69226a42f3ec/headless) behind a Tailscale sidecar, as [ADR 0008](https://github.com/asonas/syncstr/blob/b652fa4fa7ee220f0f65e659394f69226a42f3ec/docs/adr/0008-one-primary-host-over-a-private-network.md) describes. The Compose build uses application source at a fixed commit. Its inline Dockerfile temporarily overrides the upstream recipe to pin `webpki-roots` to 1.0.10 and remove the affected emSign G3 and AAA cross-sign trust paths from the OS store (Mozilla incident 2083449). It builds with the `p2p` feature, which the read API needs to serve playlists, and keeps the upstream dependency notices. This requires Compose with `dockerfile_inline` support. Restore the upstream Dockerfile after the pinned source includes both fixes; do not remove this override based only on an application version bump.
+
+## How it runs
+
+- The `tailscale` sidecar joins the tailnet in userspace and keeps its identity in the NAS state directory. Its Serve configuration publishes HTTPS on port 443 of its tailnet name and proxies every path to `http://127.0.0.2:8441`.
+- The `syncstr` container shares the sidecar's network namespace. It serves the token-free read API `/api/v1` on `127.0.0.2:8441` and the legacy `/v4` API on `127.0.0.2:8443`. Nothing listens on the NAS's LAN address.
+- Userspace tailscaled forwards a tailnet connection to any port that Serve does not handle to `127.0.0.1` at the same port. The node therefore listens on `127.0.0.2`, so a device on the tailnet reaches only what Serve proxies, `/api/v1`, and not `/v4`. This assumes the node advertises no subnet routes and does not run Tailscale SSH. Do not move either listener to `127.0.0.1`.
+- The tailnet policy is the only control over who reads the library. Every device that the effective policy lets reach the sidecar's TCP port 443 reads the whole library. Check the policy before deploying, and allow only TCP 443 to this node.
+- The legacy LAN listener, P2P transfer and rendezvous announcements are gone, and so is the earlier tailnet route to token-authenticated `/v4` catalog and audio reads. Clients that used them stop working until they move to `/api/v1`.
 
 ## Coolify
 
-Create a Git-based Docker Compose application with branch `main`, Base Directory `/`, and Compose Location `/docker-compose.yml`. Use the NAS server. Configure the variables from `.env.example` with the NAS's actual LAN address. The example address is fictional. Do not assign a proxy domain: this service handles TLS on port 8443 itself.
+Create a Git-based Docker Compose application with branch `main`, Base Directory `/`, and Compose Location `/docker-compose.yml`. Use the NAS server. Do not assign a proxy domain.
 
-Create the two host directories listed under `volumes` in `docker-compose.yml` before deployment, owned by the configured numeric UID/GID with mode 0700. Keep them outside Coolify's repository checkout. Edit the Compose paths when using a different storage layout. Absolute bind mounts avoid host-path interpolation and external-volume rewriting in older Coolify parsers.
+Set `SYNCSTR_API_ADDRESS` to the sidecar's tailnet HTTPS origin, such as `https://music.example.ts.net`; the example is fictional. The node reports it to devices in library information and refuses to start without it. Set `SYNCSTR_UID` and `SYNCSTR_GID` if the data directories are not owned by 1000.
 
-Do not reuse an app's SQLite database or an existing music directory. The service stores uploaded originals in its own object store; it does not scan existing music.
+Create the host directories listed under `volumes` in `docker-compose.yml` before the first deployment, owned by the configured numeric UID/GID with mode 0700, and keep them outside Coolify's repository checkout. Absolute bind mounts avoid host-path interpolation and external-volume rewriting in older Coolify parsers.
 
-Before the first deployment, build the image and initialize its identity once:
+The Tailscale state directory must hold an enrolled node before the first deployment, because the Compose file passes no auth key. Only one running daemon may use that identity.
+
+`syncstr` runs inside the sidecar's network namespace. Whenever the sidecar container restarts or is recreated, including an automatic restart, recreate both services (`docker compose up -d --force-recreate`). Restarting `syncstr` alone is not enough: it keeps running in the old namespace, where Serve cannot reach it.
+
+Do not reuse an app's SQLite database or an existing music directory. The node stores uploaded originals in its own object store; it does not scan existing music. Do not run two node processes against the same data directory.
+
+## First deployment
+
+The node still needs an identity for its loopback `/v4` listener. Initialize it once before the first start:
 
 ```sh
 cp .env.example .env
 # Edit .env for this host before continuing.
+# The identity bind source in docker-compose.yml:
+SYNCSTR_IDENTITY_DIRECTORY=/mnt/data/syncstr-headless/identity
 docker compose build
-docker compose run --rm --no-deps \
+docker compose up -d tailscale
+docker compose run --rm \
   --volume "$SYNCSTR_IDENTITY_DIRECTORY:/identity:rw" \
-  syncstr init --identity /identity --host 192.0.2.10
+  syncstr init --identity /identity --host 127.0.0.2
 docker compose up -d
 ```
 
-Set `SYNCSTR_IDENTITY_DIRECTORY` to the absolute identity bind source in the Compose file before running initialization. Replace the example address with the address used by clients. If Coolify builds first, the first launch will fail until initialization is completed; run `init` using that built image and restart this application. Initialization never overwrites an existing identity. The node certificate expires after one year.
+`syncstr` needs the sidecar's namespace even for `init`, so start the sidecar first.
 
-The container runs without root or extra capabilities, with a read-only root filesystem, writable `/data`, and read-only `/identity`. Verify these settings in the actual container after deployment. Linux host networking exposes the node's UDP addresses directly and binds HTTPS only to the configured NAS address and port. There are no Compose port mappings. Host networking shares the host's network namespace; use the NAS firewall to restrict access. It does not configure router forwarding or external connectivity.
+Initialization never overwrites an existing identity, so an existing deployment keeps its identity. If Coolify builds first, the first launch fails until initialization is done; run `init` with the built image and restart the application.
 
-## P2P enrollment
+The container runs without root or extra capabilities, with a read-only root filesystem, writable `/data`, and read-only `/identity`. Verify these settings in the running container after deployment.
 
-Startup initializes `/data/peer` once and retains its private key and allowed-device records across deployments. An existing but incomplete directory causes startup to fail rather than replacing an identity. Keep the entire data directory in backups. Direct mode disables relay services; remote access requires a reachable UDP route.
+## Verification
 
-P2P listens on the configured LAN IPv4 address and all IPv6 interfaces using `SYNCSTR_PEER_PORT` (UDP, default 58024). Keep the LAN address stable and reserve this UDP port for Syncstr. Both sockets must bind successfully. Saved connection records remain valid across restarts; startup fails if the port is already occupied. For an existing deployment, set this variable to the current advertised LAN port before upgrading so clients can retain their saved JSON.
+From a device the tailnet policy allows, request `https://<tailnet name>/api/v1/library`. Expect 200, the library id this host already had, and `host.address` naming the same origin as `SYNCSTR_API_ADDRESS` (the node normalizes it, so compare the scheme, host and port rather than the exact string); a new library id means `/data` points at the wrong directory. Then request `/api/v1/catalog`. A method other than `GET` on an `/api/v1` route answers 405, and an unknown path answers 404. No connection opens to the tailnet name on ports 8441 or 8443: it is refused, or times out when the policy blocks those ports. From the NAS's LAN, nothing answers on the old Syncstr ports.
 
-For cellular direct access, the NAS needs a global IPv6 address and the host/router must permit inbound UDP on this port to that address. Restrict the router exception to the NAS's address and this UDP port. HTTPS stays bound to the LAN IPv4 address. Directory registrations resolve current IPv4 and IPv6 candidates without manual re-enrollment. IPv4-only cellular clients need a separate public IPv4 forwarding route; these sockets do not create it. Verify a catalog fetch and audio download on a physical phone with Wi-Fi disabled before claiming external connectivity.
-
-Set `SYNCSTR_PEER_DIRECTORY` to the deployed directory's HTTPS origin to publish signed connection candidates. Leave it empty to retain IP-only operation. The directory carries connection information only; catalogs and audio still use direct QUIC. See the upstream [rendezvous guide](https://github.com/asonas/syncstr/blob/9403b1c7144d13ca3509e6bc71b85895fbccc73f/docs/peer-rendezvous.md).
-
-For directory-based enrollment, replace `--ip` below with `--directory https://directory.example.com`, and add `--qr` for iPhone. Existing device permissions are retained. Regenerate the enrollment JSON once to enable directory discovery in each client.
-
-Read the current public node address record:
-
-```sh
-docker compose exec syncstr syncstr-headless peer-info \
-  --state /data/peer --address /data/peer/address.json --ip 192.0.2.10
-```
-
-In the native app's P2P music sharing settings, copy the app's public device ID. Allow that device on the NAS:
-
-```sh
-docker compose exec syncstr syncstr-headless peer-pair \
-  --state /data/peer --peer <device-public-id>
-```
-
-Replace the fictional IP with the NAS's reachable LAN IP. Paste the exported JSON into the app, then confirm the displayed node ID before registration. Add `--qr` to display a QR code for the iPhone scanner. Do not share `device.key`. To revoke access, repeat the pairing command with `--revoke`. For Coolify-managed containers, use its terminal or `docker exec` against the running container instead of starting a second node.
-
-## Client verification
-
-Transfer only `tls.crt` and `token` to an authorized client through a trusted channel; keep `tls.key` on the NAS. The current token grants all node operations. Never commit identity files or tokens.
-
-Using the upstream CLI:
-
-```sh
-syncstr-headless catalog --url https://192.0.2.10:8443 \
-  --cert ./tls.crt --token-file ./token
-```
-
-Verify an upload, retry, restart, and byte-identical download before using the node for originals. Native macOS/iPhone apps support explicit P2P registration and transfers. Automatic collection and remote-network connectivity still require separate work and verification.
-
-Stop the application before backing up both persistent directories. Redeployments must retain the same mounts. Do not run two node processes against the same data directory.
-
-## Tailscale access
-
-The tailscale sidecar joins the tailnet in userspace and persists its identity in the NAS state directory. Initialize this directory with the state of the enrolled Syncstr node before deploying. Only one running daemon may use that identity. Use tailnet policy to allow the intended devices to reach its TCP port 443.
-
-Serve forwards HTTPS reads to a loopback proxy inside the sidecar. The proxy accepts catalog and track-audio reads, forwards the caller's legacy v4 bearer token, and verifies the existing LAN listener's certificate against the mounted public certificate. The sidecar has no music, token or host private-key mount. The existing peer and LAN listeners keep their addresses.
-
-To verify access from an allowed device, request `/v4/catalog` at the node's tailnet HTTPS name. The current backend returns 401 until the caller supplies its token. An unrecognized path returns 404 from the sidecar.
+Stop the application before backing up the persistent directories. Redeployments must keep the same mounts.
