@@ -2,3 +2,4 @@
 identity/
 data/
 .worktrees/
+.dev/contexts/
