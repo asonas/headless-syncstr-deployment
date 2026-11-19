@@ -15,7 +15,11 @@ Create a Git-based Docker Compose application with branch `main`, Base Directory
 
 Set `SYNCSTR_API_ADDRESS` to the sidecar's tailnet HTTPS origin, such as `https://music.example.ts.net`; the example is fictional. The node reports it to devices in library information and refuses to start without it. Set `SYNCSTR_UID` and `SYNCSTR_GID` if the data directories are not owned by 1000.
 
-Create the host directories listed under `volumes` in `docker-compose.yml` before the first deployment, owned by the configured numeric UID/GID with mode 0700, and keep them outside Coolify's repository checkout. Absolute bind mounts avoid host-path interpolation and external-volume rewriting in older Coolify parsers. Only one running daemon may use the Tailscale state directory.
+Create the host directories listed under `volumes` in `docker-compose.yml` before the first deployment, owned by the configured numeric UID/GID with mode 0700, and keep them outside Coolify's repository checkout. Absolute bind mounts avoid host-path interpolation and external-volume rewriting in older Coolify parsers.
+
+The Tailscale state directory must hold an enrolled node before the first deployment, because the Compose file passes no auth key. Only one running daemon may use that identity.
+
+`syncstr` runs inside the sidecar's network namespace. When the sidecar container is recreated, recreate `syncstr` with it (`docker compose up -d --force-recreate`), or the node keeps running in the old namespace where Serve cannot reach it.
 
 Do not reuse an app's SQLite database or an existing music directory. The node stores uploaded originals in its own object store; it does not scan existing music. Do not run two node processes against the same data directory.
 
@@ -27,10 +31,14 @@ The node still needs an identity for its loopback `/v4` listener. Initialize it 
 cp .env.example .env
 # Edit .env for this host before continuing.
 docker compose build
-docker compose run --rm --no-deps \
+docker compose up -d tailscale
+docker compose run --rm \
   --volume "$SYNCSTR_IDENTITY_DIRECTORY:/identity:rw" \
   syncstr init --identity /identity --host 127.0.0.1
+docker compose up -d
 ```
+
+`syncstr` needs the sidecar's namespace even for `init`, so start the sidecar first.
 
 Set `SYNCSTR_IDENTITY_DIRECTORY` to the absolute identity bind source in the Compose file. Initialization never overwrites an existing identity, so an existing deployment keeps its identity. If Coolify builds first, the first launch fails until initialization is done; run `init` with the built image and restart the application.
 
@@ -38,6 +46,6 @@ The container runs without root or extra capabilities, with a read-only root fil
 
 ## Verification
 
-From a device the tailnet policy allows, request `https://<tailnet name>/api/v1/library` and expect 200 with this library's id, then `/api/v1/catalog`. A request with any method other than `GET` answers 405, and an unknown path answers 404. `/v4` is not reachable from the tailnet. From the NAS's LAN, nothing answers on the old Syncstr ports.
+From a device the tailnet policy allows, request `https://<tailnet name>/api/v1/library`. Expect 200, the library id this host already had, and `host.address` equal to `SYNCSTR_API_ADDRESS`; a new library id means `/data` points at the wrong directory. Then request `/api/v1/catalog`. A method other than `GET` on an `/api/v1` route answers 405, and an unknown path answers 404. `/v4` is not reachable from the tailnet. From the NAS's LAN, nothing answers on the old Syncstr ports.
 
 Stop the application before backing up the persistent directories. Redeployments must keep the same mounts.
